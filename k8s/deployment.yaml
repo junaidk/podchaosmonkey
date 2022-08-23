@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: podchaosmonkey-deployment
+  labels:
+    app: podchaosmonkey
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: podchaosmonkey
+  template:
+    metadata:
+      labels:
+        app: podchaosmonkey
+    spec:
+      serviceAccountName: podchaosmonkey-user
+      containers:
+        - image: docker.io/podchaosmonkey/podchaosmonkey:1.0
+          name: podchaosmonkey
+          imagePullPolicy: "IfNotPresent"
+          args: [ "run" ]
+          env:
+            - name: MY_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: LABELS
+              value: 'app in (nginx)'
+            - name: NAME_SPACE
+              value: workloads
+            - name: SCHEDULE
+              value: 5s
