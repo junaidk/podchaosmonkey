@@ -8,6 +8,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	"testing"
+	"time"
 )
 
 func TestGetPods(t *testing.T) {
@@ -163,4 +164,124 @@ func TestGetCandidatePod(t *testing.T) {
 
 	candidatePods, err = wl.getCandidatePodList(&corev1.PodList{})
 	assert.Error(t, err)
+}
+
+func TestWorkload_Start(t *testing.T) {
+	namespace := "namespace1"
+	podList := []runtime.Object{
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod1",
+				Namespace: namespace,
+				Labels: map[string]string{
+					"label1": "value1",
+				},
+			},
+			Status: corev1.PodStatus{
+				Conditions: []corev1.PodCondition{
+					{
+						Type:   corev1.PodReady,
+						Status: corev1.ConditionTrue,
+					},
+				},
+			},
+		},
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod2",
+				Namespace: namespace,
+				Labels: map[string]string{
+					"label1": "value2",
+				},
+			},
+			Status: corev1.PodStatus{
+				Conditions: []corev1.PodCondition{
+					{
+						Type:   corev1.PodReady,
+						Status: corev1.ConditionTrue,
+					},
+				},
+			},
+		},
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod3",
+				Namespace: namespace,
+				Labels:    map[string]string{},
+			},
+			Status: corev1.PodStatus{
+				Conditions: []corev1.PodCondition{
+					{
+						Type:   corev1.PodReady,
+						Status: corev1.ConditionTrue,
+					},
+				},
+			},
+		},
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod4",
+				Namespace: namespace,
+				Labels: map[string]string{
+					"label1": "value2",
+				},
+			},
+			Status: corev1.PodStatus{
+				Conditions: []corev1.PodCondition{
+					{
+						Type:   corev1.PodReady,
+						Status: corev1.ConditionTrue,
+					},
+				},
+			},
+		},
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod5",
+				Namespace: namespace,
+				Labels: map[string]string{
+					"label1": "value2",
+				},
+			},
+			Status: corev1.PodStatus{
+				Conditions: []corev1.PodCondition{
+					{
+						Type:   corev1.PodReady,
+						Status: corev1.ConditionFalse,
+					},
+				},
+			},
+		},
+	}
+
+	fakeClientset := fake.NewSimpleClientset(podList...)
+	wl, err := NewWorkload("namespace1", "1ms", "pod4", SelectConfig{
+		Labels: "label1 in (value2,value1)",
+	}, fakeClientset)
+	assert.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errChan := wl.Start(ctx)
+
+	go func() {
+		for {
+			select {
+			case <-errChan:
+
+			}
+		}
+	}()
+
+	assert.Eventually(t, func() bool {
+		pods, err := fakeClientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return false
+		}
+		if len(pods.Items) == 3 {
+			return true
+		}
+		return false
+	}, 1*time.Second, 100*time.Millisecond)
+	cancel()
+
 }
